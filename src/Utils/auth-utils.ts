@@ -112,6 +112,58 @@ export const initAuthCreds = (): AuthenticationCreds => {
 	}
 }
 
+/** stores the full authentication state in a database */
+export const useDatabaseAuthState = (state: any = {}, userName: String, saveStateCallback: Function, logger?: Logger): { state: AuthenticationState, saveState: () => void } => {
+	let creds: AuthenticationCreds = state.creds
+	let keys: any = state.keys
+
+	// save the authentication state to a file
+	const saveState = () => {
+		logger && logger.trace('saving auth state')
+		console.log("saving auth state");
+		saveStateCallback(userName, JSON.stringify({ creds, keys }, BufferJSON.replacer, 2)).catch(console.dir);
+	}
+
+	if(!creds || !keys) {
+		creds = initAuthCreds()
+		keys = { }
+	}
+
+	return {
+		state: {
+			creds,
+			keys: {
+				get: (type, ids) => {
+					const key = KEY_MAP[type]
+					return ids.reduce(
+						(dict, id) => {
+							let value = keys[key]?.[id]
+							if(value) {
+								if(type === 'app-state-sync-key') {
+									value = proto.AppStateSyncKeyData.fromObject(value)
+								}
+
+								dict[id] = value
+							}
+
+							return dict
+						}, { }
+					)
+				},
+				set: (data) => {
+					for(const _key in data) {
+						const key = KEY_MAP[_key as keyof SignalDataTypeMap]
+						keys[key] = keys[key] || { }
+						Object.assign(keys[key], data[_key])
+					}
+					saveState()
+				}
+			}
+		},
+		saveState
+	}
+}
+
 /** stores the full authentication state in a single JSON file */
 export const useSingleFileAuthState = (filename: string, logger?: Logger): { state: AuthenticationState, saveState: () => void } => {
 	// require fs here so that in case "fs" is not available -- the app does not crash
